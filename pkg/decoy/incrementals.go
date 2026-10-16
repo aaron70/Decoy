@@ -24,3 +24,22 @@ func (d *Decoy) NextIncrementalInt(id string, start, step int64) int64 {
 	}
 	return value.Add(step)
 }
+
+func (d *Decoy) SetIncrementalInt(id string, value int64) int64 {
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+	incremental, exists := d.intIncrementals[id]
+	if !exists {
+		incremental = &atomic.Int64{}
+		d.intIncrementals[id] = incremental
+	}
+	incremental.Store(value)
+	return value
+}
+
+func (d *Decoy) DeleteIncrementalInt(id string) any {
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+	delete(d.intIncrementals, id)
+	return nil
+}

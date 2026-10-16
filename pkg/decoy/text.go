@@ -1,6 +1,70 @@
 package decoy
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+	"maps"
+	"slices"
+	"strings"
+)
+
+//go:embed corpus.txt
+var DefaultRandomTextCorpus string
+
+func (d *Decoy) SetNgrams(n int, ngrams map[string][]string) {
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+	d.n = n
+	d.ngrams = ngrams
+}
+
+func (d *Decoy) NgramsFromString(text string) {
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+	words := strings.Fields(text)
+	d.NgramsFromWords(words)
+}
+
+func (d *Decoy) NgramsFromWords(words []string) {
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+	if len(words) <= d.n {
+		return
+	}
+	if len(d.ngrams) == 0 {
+		d.ngrams = make(map[string][]string)
+	}
+	for i := 0; i < len(words)-d.n; i++ {
+		key := strings.Join(words[i:i+d.n], " ")
+		d.ngrams[key] = append(d.ngrams[key], words[i+d.n])
+	}
+	d.keys = slices.Collect(maps.Keys(d.ngrams))
+}
+
+func (d *Decoy) RandomText(maxWords int) (string, error) {
+	d.mutex.RLock()
+	defer d.mutex.RUnlock()
+	if len(d.ngrams) == 0 {
+		return "", errors.New("Ngrams not set")
+	}
+
+	words := strings.Fields(d.RandomChoice(d.keys...))
+	text := strings.Builder{}
+	for range maxWords {
+		key := strings.Join(words[len(words)-d.n:], " ")
+		successors, ok := d.ngrams[key]
+		if !ok {
+			break
+		}
+		words = append(words, d.RandomChoice(successors...))
+		if text.Len() != 0 {
+			text.WriteString(" ")
+		}
+		text.WriteString(words[len(words)-1])
+	}
+
+	return text.String(), nil
+}
 
 func (d *Decoy) RandomName() string {
 	return d.RandomChoice(firstNames...)

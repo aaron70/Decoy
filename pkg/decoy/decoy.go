@@ -15,6 +15,14 @@ type Decoy struct {
 	randPool        sync.Pool
 	intIncrementals map[string]*atomic.Int64
 	mutex           sync.RWMutex
+
+	// Text Generation
+	n              int
+	ngrams         map[string][]string
+	keys           []string
+
+	// Templates
+	templatesCache sync.Map
 }
 
 func WithSeed(seed uint64) DecoyOption {
