@@ -152,18 +152,18 @@ func TestRandomBoolean(t *testing.T) {
 	})
 }
 
-func TestProbablity(t *testing.T) {
+func TestProbability(t *testing.T) {
 	d := newTestDecoy(t)
 
 	t.Run("zero or below is always false", func(t *testing.T) {
 		for _, p := range []float64{-1, -0.5, -math.SmallestNonzeroFloat64, 0, math.Inf(-1), math.NaN()} {
-			assert.Falsef(t, d.Probablity(p), "Probablity(%v)", p)
+			assert.Falsef(t, d.Probability(p), "Probability(%v)", p)
 		}
 	})
 
 	t.Run("one or above is always true", func(t *testing.T) {
 		for _, p := range []float64{1, 1.5, math.MaxFloat64, math.Inf(1)} {
-			assert.Truef(t, d.Probablity(p), "Probablity(%v)", p)
+			assert.Truef(t, d.Probability(p), "Probability(%v)", p)
 		}
 	})
 
@@ -180,18 +180,18 @@ func TestProbablity(t *testing.T) {
 		for _, c := range cases {
 			trueCount := 0
 			for range n {
-				if d.Probablity(c.p) {
+				if d.Probability(c.p) {
 					trueCount++
 				}
 			}
 			ratio := float64(trueCount) / float64(n)
-			assert.InDeltaf(t, c.p, ratio, c.tolerance, "Probablity(%v) ratio", c.p)
+			assert.InDeltaf(t, c.p, ratio, c.tolerance, "Probability(%v) ratio", c.p)
 		}
 	})
 
 	t.Run("concurrent access", func(t *testing.T) {
 		testutil.RunConcurrently(testGoroutines, testIterations, func(_, _ int) {
-			_ = d.Probablity(0.5)
+			_ = d.Probability(0.5)
 		})
 	})
 }

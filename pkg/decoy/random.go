@@ -35,7 +35,7 @@ func (d *Decoy) RandomBoolean() bool {
 	return r.IntN(2) == 0
 }
 
-func (d *Decoy) Probablity(probability float64) bool {
+func (d *Decoy) Probability(probability float64) bool {
 	if probability <= 0 {
 		return false
 	}

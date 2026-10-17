@@ -79,7 +79,7 @@ func (d *Decoy) DefaultTemplateFuncMaps() template.FuncMap {
 		"randomName":            d.RandomName,
 		"randomLastName":        d.RandomLastName,
 		"randomFullName":        d.RandomFullName,
-		"probability":           d.Probablity,
+		"probability":           d.Probability,
 		"nextIncrementalInt":    d.NextIncrementalInt,
 		"currentIncrementalInt": d.CurrentIncrementalInt,
 		"setIncrementalInt":     d.SetIncrementalInt,
@@ -122,7 +122,9 @@ func (d *Decoy) compileTemplate(tmpl string, config *parseTemplateConfig) (*temp
 }
 
 func (d *Decoy) CompileTemplate(tmpl string, options ...ParseTemplateOption) (*template.Template, error) {
-	config := &parseTemplateConfig{}
+	config := &parseTemplateConfig{
+		Funcs: d.DefaultTemplateFuncMaps(),
+	}
 	err := applyConfigOptions(config, options...)
 	if err != nil {
 		return nil, err
@@ -131,7 +133,9 @@ func (d *Decoy) CompileTemplate(tmpl string, options ...ParseTemplateOption) (*t
 }
 
 func (d *Decoy) ParseTemplate(w io.Writer, tmpl string, options ...ParseTemplateOption) error {
-	config := &parseTemplateConfig{}
+	config := &parseTemplateConfig{
+		Funcs: d.DefaultTemplateFuncMaps(),
+	}
 	err := applyConfigOptions(config, options...)
 	if err != nil {
 		return err

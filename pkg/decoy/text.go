@@ -1,6 +1,7 @@
 package decoy
 
 import (
+	_ "embed"
 	"errors"
 	"fmt"
 	"maps"
@@ -19,8 +20,6 @@ func (d *Decoy) SetNgrams(n int, ngrams map[string][]string) {
 }
 
 func (d *Decoy) NgramsFromString(text string) {
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
 	words := strings.Fields(text)
 	d.NgramsFromWords(words)
 }
@@ -39,6 +38,10 @@ func (d *Decoy) NgramsFromWords(words []string) {
 		d.ngrams[key] = append(d.ngrams[key], words[i+d.n])
 	}
 	d.keys = slices.Collect(maps.Keys(d.ngrams))
+}
+
+func (d *Decoy) LoadDefaultNgrams() {
+	d.NgramsFromString(DefaultRandomTextCorpus)
 }
 
 func (d *Decoy) RandomText(maxWords int) (string, error) {
@@ -77,7 +80,7 @@ func (d *Decoy) RandomLastName() string {
 func (d *Decoy) RandomFullName(middleNameProbability float64) string {
 	name := d.RandomName()
 	lastName := d.RandomLastName()
-	if d.Probablity(middleNameProbability) {
+	if d.Probability(middleNameProbability) {
 		return fmt.Sprintf("%s %s %s", name, d.RandomLastName(), lastName)
 	}
 	return fmt.Sprintf("%s %s", name, lastName)

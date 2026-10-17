@@ -155,7 +155,7 @@ func TestDecoyConcurrencySafety(t *testing.T) {
 		case 2:
 			_ = d.RandomBoolean()
 		case 3:
-			_ = d.Probablity(0.5)
+			_ = d.Probability(0.5)
 		case 4:
 			_ = d.NextIncrementalInt(counterID, 0, counterStep)
 		case 5:
@@ -186,7 +186,7 @@ func TestDecoyNoGoroutineLeak(t *testing.T) {
 		d.RandomInt(0, 10)
 		d.RandomFloat(-1, 1)
 		d.RandomBoolean()
-		d.Probablity(0.5)
+		d.Probability(0.5)
 		d.NextIncrementalInt("leak", 0, 1)
 		d.CurrentIncrementalInt("leak", 0)
 		d.RandomName()
