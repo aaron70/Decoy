@@ -15,7 +15,7 @@ import (
 func createStoreCommand(decoy *services.Decoy) *cobra.Command {
 	var (
 		name, config, file string
-		err                error
+		interactive        bool
 	)
 	command := &cobra.Command{
 		Use:   "store <name>",
@@ -34,7 +34,26 @@ decoy runner store "echo" -c 'echo "{{ .template }}"'
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name = args[0]
 
-			if cmd.Flags().Changed("file") {
+			isUpdate := true
+			oldRunner, err := decoy.RunnerSvc.Get(name)
+			if err != nil {
+				if !errors.Is(err, errs.ErrNotFound) {
+					return err
+				}
+				isUpdate = false
+			}
+
+			if interactive {
+				initialText := ""
+				if isUpdate {
+					initialText = oldRunner.Config
+				}
+				bytes, err := utils.EditText(initialText)
+				if err != nil {
+					return err
+				}
+				config = string(bytes)
+			} else if cmd.Flags().Changed("file") {
 				bytes, err := os.ReadFile(file)
 				if err != nil {
 					return err
@@ -47,12 +66,7 @@ decoy runner store "echo" -c 'echo "{{ .template }}"'
 				}
 			}
 
-			oldRunner, err := decoy.RunnerSvc.Get(name)
-			if err != nil {
-				if !errors.Is(err, errs.ErrNotFound) {
-					return err
-				}
-			} else {
+			if isUpdate {
 				fmt.Printf("Updating runner %q:\n%s\n", name, string(oldRunner.Config))
 				entity, err := decoy.RunnerSvc.Update(name, config)
 				if err != nil {
@@ -72,6 +86,7 @@ decoy runner store "echo" -c 'echo "{{ .template }}"'
 
 	command.Flags().StringVarP(&config, "config", "c", "", "The config JSON of the runner")
 	command.Flags().StringVarP(&file, "file", "f", "", "The path of the file with the runner config")
+	command.Flags().BoolVarP(&interactive, "interactive", "i", false, "Whether to open an editor to edit the the runner.")
 	command.MarkFlagsMutuallyExclusive("config", "file")
 
 	return command

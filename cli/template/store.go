@@ -15,7 +15,7 @@ import (
 func createStoreCommand(decoy *services.Decoy) *cobra.Command {
 	var (
 		name, tmpl, file string
-		err              error
+		interactive      bool
 	)
 	command := &cobra.Command{
 		Use:   "store <name>",
@@ -33,7 +33,27 @@ decoy template store "greet" -t 'Hello, {{ coalesce .Name "World" }}'
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name = args[0]
-			if cmd.Flags().Changed("file") {
+
+			isUpdate := true
+			oldTmpl, err := decoy.TemplateSvc.Get(name)
+			if err != nil {
+				if !errors.Is(err, errs.ErrNotFound) {
+					return err
+				}
+				isUpdate = false
+			}
+
+			if interactive {
+				initialText := ""
+				if isUpdate {
+					initialText = oldTmpl.Tmpl
+				}
+				bytes, err := utils.EditText(initialText)
+				if err != nil {
+					return err
+				}
+				tmpl = string(bytes)
+			} else if cmd.Flags().Changed("file") {
 				bytes, err := os.ReadFile(file)
 				if err != nil {
 					return err
@@ -46,12 +66,7 @@ decoy template store "greet" -t 'Hello, {{ coalesce .Name "World" }}'
 				}
 			}
 
-			oldTmpl, err := decoy.TemplateSvc.Get(name)
-			if err != nil {
-				if !errors.Is(err, errs.ErrNotFound) {
-					return err
-				}
-			} else {
+			if isUpdate {
 				fmt.Printf("Updating template %q:\n%s\n", name, oldTmpl)
 				entity, err := decoy.TemplateSvc.Update(name, tmpl)
 				if err != nil {
@@ -71,7 +86,8 @@ decoy template store "greet" -t 'Hello, {{ coalesce .Name "World" }}'
 
 	command.Flags().StringVarP(&tmpl, "template", "t", "", "The content of the template")
 	command.Flags().StringVarP(&file, "file", "f", "", "The path of the file with the template contents")
-	command.MarkFlagsMutuallyExclusive("template", "file")
+	command.Flags().BoolVarP(&interactive, "interactive", "i", false, "Whether to open an editor to edit the the template.")
+	command.MarkFlagsMutuallyExclusive("template", "file", "interactive")
 
 	return command
 }

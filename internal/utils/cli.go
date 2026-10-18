@@ -5,6 +5,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
+	"os/exec"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -37,4 +40,48 @@ func ReadStringFrom(r io.Reader) (string, error) {
 
 	contents, err := io.ReadAll(r)
 	return string(contents), err
+}
+
+func getEditorCommand() []string {
+	for _, key := range []string{"VISUAL", "EDITOR"} {
+		if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+			return strings.Fields(v)
+		}
+	}
+	if runtime.GOOS == "windows" {
+		return []string{"notepad"}
+	}
+	return []string{"vi"}
+}
+
+func EditText(initial string) ([]byte, error) {
+	f, err := os.CreateTemp("", "decoy-tmp-")
+	if err != nil {
+		return nil, err
+	}
+	defer os.Remove(f.Name())
+
+	if _, err := f.WriteString(initial); err != nil {
+		f.Close()
+		return nil, err
+	}
+	if err := f.Close(); err != nil {
+		return nil, err
+	}
+
+	argv := getEditorCommand()
+	cmd := exec.Command(argv[0], append(argv[1:], f.Name())...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("Couldn't open the editor %q, failed with: %w", argv[0], err)
+	}
+
+	data, err := os.ReadFile(f.Name())
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
 }

@@ -5,12 +5,13 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"runtime"
 	"strings"
 	"sync"
 
-	"github.com/aaron70/decoy/internal/runners"
 	"github.com/aaron70/decoy/internal/model"
+	"github.com/aaron70/decoy/internal/runners"
 	"github.com/aaron70/decoy/pkg/decoy"
 	"github.com/aaron70/goaty/channels"
 	"github.com/aaron70/goaty/concurrency"
@@ -67,7 +68,7 @@ func (svc Runner) Delete(id string) (model.Runner, error) {
 	return svc.repo.Delete(id)
 }
 
-func (svc Runner) Run(w io.Writer, _type RunnerType, config, tmpl string, extraTemplates map[string]string, data any, n int, workers int) error {
+func (svc Runner) Run(w io.Writer, _type RunnerType, config, tmpl string, extraTemplates map[string]string, data map[string]any, n int, workers int) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -100,7 +101,11 @@ func (svc Runner) Run(w io.Writer, _type RunnerType, config, tmpl string, extraT
 	}
 
 	mapsPool := sync.Pool{
-		New: func() any { return map[string]any{"goroutines": workers, "times": n, "data": data} },
+		New: func() any {
+			rdata := map[string]any{"goroutines": workers, "times": n}
+			maps.Insert(rdata, maps.All(data))
+			return rdata
+		},
 	}
 
 	templatePool, err := concurrency.NewPool(ctx, concurrency.ToWorkerFunc(func(ctx context.Context, task string) (string, error) {
