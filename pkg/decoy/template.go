@@ -81,7 +81,6 @@ func (d *Decoy) DefaultTemplateFuncMaps() template.FuncMap {
 		"randomFullName":        d.RandomFullName,
 		"probability":           d.Probability,
 		"nextIncrementalInt":    d.NextIncrementalInt,
-		"currentIncrementalInt": d.CurrentIncrementalInt,
 		"setIncrementalInt":     d.SetIncrementalInt,
 		"deleteIncrementalInt":   d.DeleteIncrementalInt,
 		"readFileString": d.ReadFileString,
@@ -95,11 +94,14 @@ func (d *Decoy) DefaultTemplateFuncMaps() template.FuncMap {
 	return funcMap
 }
 
-func (d *Decoy) compileTemplate(tmpl string, config *parseTemplateConfig) (*template.Template, error) {
+func (d *Decoy) compileTemplate(tmpl string, config *parseTemplateConfig) (*template.Template, func(), error) {
 	checksum := xxhash.Sum64String(fmt.Sprintf("%s%+v%+v", tmpl, config.NestedTemplates, config.Funcs))
+	cleanup := func() {
+		d.templatesCache.Delete(checksum)
+	}
 	cacheHit, exists := d.templatesCache.Load(checksum)
 	if exists {
-		return cacheHit.(*template.Template), nil
+		return cacheHit.(*template.Template), cleanup, nil
 	}
 
 	compiledTemplate, err := template.
@@ -107,21 +109,32 @@ func (d *Decoy) compileTemplate(tmpl string, config *parseTemplateConfig) (*temp
 		Funcs(config.Funcs).
 		Parse(tmpl)
 	if err != nil {
-		return nil, err
+		return nil, cleanup, err
 	}
 
 	for name, tmpl := range config.NestedTemplates {
 		_, err = compiledTemplate.New(name).Parse(tmpl)
 		if err != nil {
-			return nil, err
+			return nil, cleanup, err
 		}
 	}
 
 	d.templatesCache.Store(checksum, compiledTemplate)
-	return compiledTemplate, nil
+	return compiledTemplate, cleanup, nil
 }
 
-func (d *Decoy) CompileTemplate(tmpl string, options ...ParseTemplateOption) (*template.Template, error) {
+func (d *Decoy) CompileTemplate(tmpl string, options ...ParseTemplateOption) (*template.Template, func(), error) {
+	config := &parseTemplateConfig{
+		Funcs: d.DefaultTemplateFuncMaps(),
+	}
+	err := applyConfigOptions(config, options...)
+	if err != nil {
+		return nil, nil, err
+	}
+	return d.compileTemplate(tmpl, config)
+}
+
+func (d *Decoy) ParseTemplate(w io.Writer, tmpl string, options ...ParseTemplateOption) (func(), error) {
 	config := &parseTemplateConfig{
 		Funcs: d.DefaultTemplateFuncMaps(),
 	}
@@ -129,31 +142,20 @@ func (d *Decoy) CompileTemplate(tmpl string, options ...ParseTemplateOption) (*t
 	if err != nil {
 		return nil, err
 	}
-	return d.compileTemplate(tmpl, config)
+
+	compiledTemplate, cleanTemplate, err := d.compileTemplate(tmpl, config)
+	if err != nil {
+		return cleanTemplate, err
+	}
+
+	return cleanTemplate, compiledTemplate.Execute(w, config.Data)
 }
 
-func (d *Decoy) ParseTemplate(w io.Writer, tmpl string, options ...ParseTemplateOption) error {
-	config := &parseTemplateConfig{
-		Funcs: d.DefaultTemplateFuncMaps(),
-	}
-	err := applyConfigOptions(config, options...)
-	if err != nil {
-		return err
-	}
-
-	compiledTemplate, err := d.compileTemplate(tmpl, config)
-	if err != nil {
-		return err
-	}
-
-	return compiledTemplate.Execute(w, config.Data)
-}
-
-func (d *Decoy) ParseTemplateString(tmpl string, options ...ParseTemplateOption) (string, error) {
+func (d *Decoy) ParseTemplateString(tmpl string, options ...ParseTemplateOption) (string, func(), error) {
 	str := bytes.NewBufferString("")
-	err := d.ParseTemplate(str, tmpl, options...)
+	cleanup, err := d.ParseTemplate(str, tmpl, options...)
 	if err != nil {
-		return "", err
+		return "", cleanup, err
 	}
-	return str.String(), nil
+	return str.String(), cleanup, nil
 }

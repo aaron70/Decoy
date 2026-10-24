@@ -2,16 +2,6 @@ package decoy
 
 import "sync/atomic"
 
-func (d *Decoy) CurrentIncrementalInt(id string, defaultValue int) int64 {
-	d.mutex.RLock()
-	defer d.mutex.RUnlock()
-	value, exists := d.intIncrementals[id]
-	if !exists {
-		return int64(defaultValue)
-	}
-	return value.Load()
-}
-
 func (d *Decoy) NextIncrementalInt(id string, start, step int) int64 {
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
