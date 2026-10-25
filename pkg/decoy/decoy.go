@@ -1,8 +1,8 @@
 package decoy
 
 import (
+	"math/rand/v2"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/aaron70/goaty/options"
@@ -11,15 +11,15 @@ import (
 type DecoyOption func(*Decoy) error
 
 type Decoy struct {
-	Seed      uint64
-	randSeed2 atomic.Uint64
-	mutex     sync.RWMutex
+	seed   uint64
+	random *rand.Rand
+	mutex  sync.RWMutex
 }
 
 func WithSeed(seed uint64) DecoyOption {
 	return func(d *Decoy) error {
-		d.Seed = seed
-		d.randSeed2.Store(0)
+		d.seed = seed
+		d.random = rand.New(rand.NewPCG(seed, 0))
 		return nil
 	}
 }
@@ -27,7 +27,8 @@ func WithSeed(seed uint64) DecoyOption {
 func NewDecoy(opts ...DecoyOption) (*Decoy, error) {
 	seed := uint64(time.Now().UnixNano())
 	decoy := &Decoy{
-		Seed: seed,
+		seed:   seed,
+		random: rand.New(rand.NewPCG(seed, 0)),
 	}
 
 	if err := options.Apply(decoy, opts...); err != nil {
