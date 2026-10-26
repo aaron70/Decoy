@@ -11,13 +11,20 @@ import (
 type DecoyOption func(*DecoyConfig) error
 
 type DecoyConfig struct {
-	Seed uint64
+	Seed   uint64
+	Ngram  int
+	Ngrams map[string][]string
 }
 
 type Decoy struct {
 	seed   uint64
 	random *rand.Rand
 	mutex  sync.RWMutex
+
+	// Random Text Generation
+	ngram  int
+	ngrams map[string][]string
+	keys   []string
 }
 
 func WithSeed(seed uint64) DecoyOption {
@@ -36,5 +43,6 @@ func NewDecoy(opts ...DecoyOption) (*Decoy, error) {
 	return &Decoy{
 		seed:   config.Seed,
 		random: rand.New(rand.NewPCG(config.Seed, 0)),
+		ngram:  4,
 	}, nil
 }

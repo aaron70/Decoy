@@ -1,10 +1,77 @@
 package decoy
 
 import (
+	_ "embed"
 	"fmt"
+	"maps"
+	"slices"
+	"strings"
 
+	"github.com/aaron70/goaty/errors"
 	"github.com/aaron70/goaty/utils"
 )
+
+//go:embed resources/corpus.txt
+var DefaultRandomTextCorpus string
+
+func (d *Decoy) SetNgram(n int) error {
+	if n <= 0 {
+		return errors.NewError(errors.ErrInvalidArgument, nil, "The given ngram size (%d) is invaild, the sliding window size must be greater than 0", n)
+	}
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+	d.ngram = n
+	return nil
+}
+
+func (d *Decoy) LoadDefaultNgrams() {
+	d.LoadNgrams(strings.Fields(DefaultRandomTextCorpus))
+}
+
+func (d *Decoy) LoadNgrams(words []string) error {
+	if len(words) == 0 {
+		return errors.NewError(errors.ErrInvalidArgument, nil, "Can't load the ngrams, the given list of words is empty")
+	}
+
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+	for left := range len(words) - d.ngram {
+		right := left + d.ngram
+		key := strings.Join(words[left:right], " ")
+		d.ngrams[key] = append(d.ngrams[key], words[right+1])
+	}
+	d.keys = slices.Collect(maps.Keys(d.ngrams))
+
+	return nil
+}
+
+func (d *Decoy) RandomText(n int) (string, error) {
+	d.mutex.RLock()
+	defer d.mutex.RUnlock()
+	if len(d.ngrams) == 0 {
+		return "", errors.NewError(errors.ErrInvalidArgument, nil, "There is no corpus text loaded to generate the text from, you can load a corpus text using the `LoadNgrams` function")
+	}
+	if len(d.keys) == 0 {
+		return "", errors.New("There are no keys from the ngrams registered, are you sure you loaded the corpus text?")
+	}
+
+	words := strings.Fields(utils.Must(d.RandomChoice(d.keys...)))
+	text := strings.Builder{}
+	for range n {
+		key := strings.Join(words[len(words)-d.ngram:], " ")
+		successors, ok := d.ngrams[key]
+		if !ok {
+			break
+		}
+		words = append(words, utils.Must(d.RandomChoice(successors...)))
+		if text.Len() != 0 {
+			text.WriteString(" ")
+		}
+		text.WriteString(words[len(words)-1])
+	}
+
+	return text.String(), nil
+}
 
 func (d *Decoy) RandomName() string {
 	return utils.Must(d.RandomChoice(firstNames...))
