@@ -8,7 +8,11 @@ import (
 	"github.com/aaron70/goaty/options"
 )
 
-type DecoyOption func(*Decoy) error
+type DecoyOption func(*DecoyConfig) error
+
+type DecoyConfig struct {
+	Seed uint64
+}
 
 type Decoy struct {
 	seed   uint64
@@ -17,23 +21,20 @@ type Decoy struct {
 }
 
 func WithSeed(seed uint64) DecoyOption {
-	return func(d *Decoy) error {
-		d.seed = seed
-		d.random = rand.New(rand.NewPCG(seed, 0))
+	return func(d *DecoyConfig) error {
+		d.Seed = seed
 		return nil
 	}
 }
 
 func NewDecoy(opts ...DecoyOption) (*Decoy, error) {
-	seed := uint64(time.Now().UnixNano())
-	decoy := &Decoy{
-		seed:   seed,
-		random: rand.New(rand.NewPCG(seed, 0)),
-	}
-
-	if err := options.Apply(decoy, opts...); err != nil {
+	config := DecoyConfig{Seed: uint64(time.Now().UnixNano())}
+	if err := options.Apply(&config, opts...); err != nil {
 		return nil, err
 	}
 
-	return decoy, nil
+	return &Decoy{
+		seed:   config.Seed,
+		random: rand.New(rand.NewPCG(config.Seed, 0)),
+	}, nil
 }

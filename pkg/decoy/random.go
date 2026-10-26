@@ -3,52 +3,48 @@ package decoy
 import (
 	"fmt"
 	"math"
+
+	"github.com/aaron70/goaty/errors"
+	"github.com/aaron70/goaty/utils"
 )
 
-func (d *Decoy) RandomInt(limit1, limit2 int) int {
+func (d *Decoy) RandomInt(min, max int) (int, error) {
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
-	return d.randomInt(limit1, limit2)
+	return d.randomInt(min, max)
 }
 
-func (d *Decoy) randomInt(limit1, limit2 int) int {
-	min, max := limit1, limit2
-	if min > max {
-		min, max = max, min
+func (d *Decoy) randomInt(min, max int) (int, error) {
+	if min >= max {
+		return 0, fmt.Errorf("%w: RandomInt: Invalid limits [%d, %d). max (%d) must be greater than min (%d)", errors.ErrInvalidArgument, min, max, max, min)
 	}
-	if min == max {
-		panic(fmt.Sprintf("decoy: empty range [%d, %d)", min, max))
-	}
-	span := int64(max) - int64(min)
-	if span <= 0 {
-		panic(fmt.Sprintf("decoy: range [%d, %d) is too large", min, max))
-	}
-	return int(int64(min) + d.random.Int64N(span))
+	return int(uint64(min) + d.random.Uint64N(uint64(max)-uint64(min))), nil
 }
 
-func (d *Decoy) RandomFloat(limit1, limit2 float64) float64 {
+func (d *Decoy) RandomFloat(min, max float64) (float64, error) {
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
-	return d.randomFloat(limit1, limit2)
+	return d.randomFloat(min, max)
 }
 
-func (d *Decoy) randomFloat(limit1, limit2 float64) float64 {
-	if math.IsNaN(limit1) || math.IsNaN(limit2) || math.IsInf(limit1, 0) || math.IsInf(limit2, 0) {
-		panic(fmt.Sprintf("decoy: non-finite range [%v, %v)", limit1, limit2))
+func (d *Decoy) randomFloat(min, max float64) (float64, error) {
+	if math.IsNaN(min) || math.IsNaN(max) || math.IsInf(min, 0) || math.IsInf(max, 0) {
+		return 0.0, fmt.Errorf("%w: RandomFloat: Invalid limits [%v, %v). Non-finite range ", ErrRangeTooLarge, min, max)
+	}
+	if min >= max {
+		return 0.0, fmt.Errorf("%w: RandomFloat: Invalid limits [%v, %v). max (%v) must be greater than min (%v)", errors.ErrInvalidArgument, min, max, max, min)
 	}
 
-	min, max := limit1, limit2
-	if min > max {
-		min, max = max, min
-	}
-	if min == max {
-		return min
-	}
 	span := max - min
 	if math.IsInf(span, 0) {
-		panic(fmt.Sprintf("decoy: range [%v, %v) is too large", min, max))
+		return 0.0, fmt.Errorf("%w: RandomFloat: Invalid limits [%v, %v). Range is too large", ErrRangeTooLarge, min, max)
 	}
-	return d.random.Float64()*span + min
+
+	result := d.random.Float64()*span + min
+	if result >= max {
+		result = math.Nextafter(max, min)
+	}
+	return result, nil
 }
 
 func (d *Decoy) RandomBoolean() bool {
@@ -74,12 +70,13 @@ func (d *Decoy) Probability(probability float64) bool {
 	return d.random.Float64() < probability
 }
 
-func (d *Decoy) RandomChoice[C any](choices ...C) C {
+func (d *Decoy) RandomChoice[C any](choices ...C) (C, error) {
+	var zero C
 	if len(choices) == 0 {
-		panic("decoy: RandomChoice requires at least one choice")
+		return zero, fmt.Errorf("%w: RandomChoice: Requires at least one choice, got no choices", errors.ErrInvalidArgument)
 	}
 
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
-	return choices[d.randomInt(0, len(choices))]
+	return choices[utils.Must(d.randomInt(0, len(choices)))], nil
 }

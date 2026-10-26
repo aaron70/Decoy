@@ -1,13 +1,17 @@
 package decoy
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/aaron70/goaty/utils"
+)
 
 func (d *Decoy) RandomName() string {
-	return d.RandomChoice(firstNames...)
+	return utils.Must(d.RandomChoice(firstNames...))
 }
 
 func (d *Decoy) RandomLastName() string {
-	return d.RandomChoice(lastNames...)
+	return utils.Must(d.RandomChoice(lastNames...))
 }
 
 func (d *Decoy) RandomFullName(secondLastNameProbability float64) string {
