@@ -3,6 +3,7 @@ package decoy
 import (
 	"math/rand/v2"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/aaron70/goaty/options"
@@ -25,6 +26,10 @@ type Decoy struct {
 	ngram  int
 	ngrams map[string][]string
 	keys   []string
+
+
+	// Incrementals
+	intIncrementals map[string]*atomic.Int64
 }
 
 func WithSeed(seed uint64) DecoyOption {
