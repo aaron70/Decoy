@@ -35,7 +35,7 @@ func (d *Decoy) LoadNgrams(words []string) error {
 
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
-	for left := range len(words) - d.ngram {
+	for left := range len(words) - d.ngram -1 { // FIX: Why does it need the -1?
 		right := left + d.ngram
 		key := strings.Join(words[left:right], " ")
 		d.ngrams[key] = append(d.ngrams[key], words[right+1])

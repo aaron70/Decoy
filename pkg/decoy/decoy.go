@@ -48,6 +48,8 @@ func NewDecoy(opts ...DecoyOption) (*Decoy, error) {
 	return &Decoy{
 		seed:   config.Seed,
 		random: rand.New(rand.NewPCG(config.Seed, 0)),
+		intIncrementals: make(map[string]*atomic.Int64),
+		ngrams: make(map[string][]string),
 		ngram:  4,
 	}, nil
 }
