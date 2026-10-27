@@ -2,54 +2,50 @@ package decoy
 
 import "sync/atomic"
 
-func (d *Decoy) NextIncrementalInt(id string, start, step int) int64 {
-	d.mutex.RLock()
+func (d *Decoy) NextIncrementalInt(id string, start, step int64) int64 {
+	d.incrementalMu.RLock()
 	counter, exists := d.intIncrementals[id]
-	d.mutex.RUnlock()
+	d.incrementalMu.RUnlock()
 	if exists {
-		return counter.Add(int64(step))
+		return counter.Add(step)
 	}
 
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
+	d.incrementalMu.Lock()
+	defer d.incrementalMu.Unlock()
 
-	// Someone may have created it while we waited for the write lock.
+	d.ensureIncrementalsLocked()
 	counter, exists = d.intIncrementals[id]
 	if exists {
-		return counter.Add(int64(step))
+		return counter.Add(step)
 	}
 
 	counter = &atomic.Int64{}
-	counter.Store(int64(start))
+	counter.Store(start)
 	d.intIncrementals[id] = counter
-	return int64(start)
+	return start
 }
 
-func (d *Decoy) SetIncrementalInt(id string, value int) int {
-	d.mutex.RLock()
+func (d *Decoy) SetIncrementalInt(id string, value int64) int64 {
+	d.incrementalMu.Lock()
+	defer d.incrementalMu.Unlock()
+
+	d.ensureIncrementalsLocked()
 	counter, exists := d.intIncrementals[id]
-	d.mutex.RUnlock()
-	if exists {
-		counter.Store(int64(value))
-		return value
-	}
-
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
-
-	// Someone may have created it while we waited for the write lock.
-	counter, exists = d.intIncrementals[id]
 	if !exists {
 		counter = &atomic.Int64{}
 		d.intIncrementals[id] = counter
 	}
-	counter.Store(int64(value))
+	counter.Store(value)
 	return value
 }
 
-func (d *Decoy) DeleteIncrementalInt(id string) any {
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
+func (d *Decoy) DeleteIncrementalInt(id string) bool {
+	d.incrementalMu.Lock()
+	defer d.incrementalMu.Unlock()
+
+	if _, exists := d.intIncrementals[id]; !exists {
+		return false
+	}
 	delete(d.intIncrementals, id)
-	return nil
+	return true
 }

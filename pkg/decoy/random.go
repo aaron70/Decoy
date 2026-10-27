@@ -5,12 +5,12 @@ import (
 	"math"
 
 	"github.com/aaron70/goaty/errors"
-	"github.com/aaron70/goaty/utils"
 )
 
 func (d *Decoy) RandomInt(min, max int) (int, error) {
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
+	d.randMu.Lock()
+	defer d.randMu.Unlock()
+	d.ensureRandomLocked()
 	return d.randomInt(min, max)
 }
 
@@ -22,14 +22,15 @@ func (d *Decoy) randomInt(min, max int) (int, error) {
 }
 
 func (d *Decoy) RandomFloat(min, max float64) (float64, error) {
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
+	d.randMu.Lock()
+	defer d.randMu.Unlock()
+	d.ensureRandomLocked()
 	return d.randomFloat(min, max)
 }
 
 func (d *Decoy) randomFloat(min, max float64) (float64, error) {
 	if math.IsNaN(min) || math.IsNaN(max) || math.IsInf(min, 0) || math.IsInf(max, 0) {
-		return 0.0, fmt.Errorf("%w: RandomFloat: Invalid limits [%v, %v). Non-finite range ", ErrRangeTooLarge, min, max)
+		return 0.0, fmt.Errorf("%w: RandomFloat: Invalid limits [%v, %v). Non-finite range", ErrNonFinite, min, max)
 	}
 	if min >= max {
 		return 0.0, fmt.Errorf("%w: RandomFloat: Invalid limits [%v, %v). max (%v) must be greater than min (%v)", errors.ErrInvalidArgument, min, max, max, min)
@@ -48,8 +49,9 @@ func (d *Decoy) randomFloat(min, max float64) (float64, error) {
 }
 
 func (d *Decoy) RandomBoolean() bool {
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
+	d.randMu.Lock()
+	defer d.randMu.Unlock()
+	d.ensureRandomLocked()
 	return d.randomBool()
 }
 
@@ -65,8 +67,9 @@ func (d *Decoy) Probability(probability float64) bool {
 		return true
 	}
 
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
+	d.randMu.Lock()
+	defer d.randMu.Unlock()
+	d.ensureRandomLocked()
 	return d.random.Float64() < probability
 }
 
@@ -76,7 +79,20 @@ func (d *Decoy) RandomChoice[C any](choices ...C) (C, error) {
 		return zero, fmt.Errorf("%w: RandomChoice: Requires at least one choice, got no choices", errors.ErrInvalidArgument)
 	}
 
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
-	return choices[utils.Must(d.randomInt(0, len(choices)))], nil
+	d.randMu.Lock()
+	defer d.randMu.Unlock()
+	d.ensureRandomLocked()
+
+	index, err := d.randomInt(0, len(choices))
+	if err != nil {
+		return zero, err
+	}
+	return choices[index], nil
+}
+
+func (d *Decoy) randomStringChoice(choices []string) string {
+	d.randMu.Lock()
+	defer d.randMu.Unlock()
+	d.ensureRandomLocked()
+	return choices[d.random.IntN(len(choices))]
 }

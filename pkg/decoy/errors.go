@@ -6,7 +6,8 @@ import (
 	gErrors "github.com/aaron70/goaty/errors"
 )
 
-
 var (
 	ErrRangeTooLarge = errors.Join(gErrors.ErrInvalidArgument, gErrors.New("RangeTooLarge"))
+	ErrNonFinite     = errors.Join(gErrors.ErrInvalidArgument, gErrors.New("NonFinite"))
+	ErrNoCorpus      = errors.Join(gErrors.ErrInvalidArgument, gErrors.New("NoCorpus"))
 )

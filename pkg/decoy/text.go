@@ -3,29 +3,49 @@ package decoy
 import (
 	_ "embed"
 	"fmt"
-	"maps"
 	"slices"
+	"sort"
 	"strings"
+	"sync"
 
 	"github.com/aaron70/goaty/errors"
-	"github.com/aaron70/goaty/utils"
 )
 
 //go:embed resources/corpus.txt
 var DefaultRandomTextCorpus string
 
+var (
+	defaultWordsOnce sync.Once
+	defaultWords     []string
+)
+
 func (d *Decoy) SetNgram(n int) error {
 	if n <= 0 {
-		return errors.NewError(errors.ErrInvalidArgument, nil, "The given ngram size (%d) is invaild, the sliding window size must be greater than 0", n)
+		return errors.NewError(errors.ErrInvalidArgument, nil, "The given ngram size (%d) is invalid, the sliding window size must be greater than 0", n)
 	}
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
+
+	d.corpusMu.Lock()
+	defer d.corpusMu.Unlock()
+
+	if len(d.words) > 0 && len(d.words) <= n {
+		return errors.NewError(errors.ErrInvalidArgument, nil, "The given ngram size (%d) must be smaller than the loaded corpus size (%d)", n, len(d.words))
+	}
+	if len(d.ngrams) > 0 && len(d.words) == 0 {
+		return errors.NewError(errors.ErrInvalidArgument, nil, "The ngram size can't be changed after loading a precomputed ngrams map")
+	}
+
 	d.ngram = n
+	if len(d.words) > 0 {
+		d.buildNgramsLocked(d.words)
+	}
 	return nil
 }
 
-func (d *Decoy) LoadDefaultNgrams() {
-	d.LoadNgrams(strings.Fields(DefaultRandomTextCorpus))
+func (d *Decoy) LoadDefaultNgrams() error {
+	defaultWordsOnce.Do(func() {
+		defaultWords = strings.Fields(DefaultRandomTextCorpus)
+	})
+	return d.LoadNgrams(defaultWords)
 }
 
 func (d *Decoy) LoadNgrams(words []string) error {
@@ -33,52 +53,103 @@ func (d *Decoy) LoadNgrams(words []string) error {
 		return errors.NewError(errors.ErrInvalidArgument, nil, "Can't load the ngrams, the given list of words is empty")
 	}
 
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
-	for left := range len(words) - d.ngram -1 { // FIX: Why does it need the -1?
-		right := left + d.ngram
-		key := strings.Join(words[left:right], " ")
-		d.ngrams[key] = append(d.ngrams[key], words[right+1])
-	}
-	d.keys = slices.Collect(maps.Keys(d.ngrams))
+	d.corpusMu.Lock()
+	defer d.corpusMu.Unlock()
 
+	d.ensureCorpusLocked()
+	if len(words) <= d.ngram {
+		return errors.NewError(errors.ErrInvalidArgument, nil, "Can't load the ngrams, the corpus must contain more than %d words", d.ngram)
+	}
+	for _, word := range words {
+		wordFields := strings.Fields(word)
+		if len(wordFields) != 1 || wordFields[0] != word {
+			return errors.NewError(errors.ErrInvalidArgument, nil, "Can't load the ngrams, the word %q is empty or contains whitespace", word)
+		}
+	}
+
+	d.words = slices.Clone(words)
+	d.buildNgramsLocked(d.words)
 	return nil
 }
 
-func (d *Decoy) RandomText(n int) (string, error) {
-	d.mutex.RLock()
-	defer d.mutex.RUnlock()
-	if len(d.ngrams) == 0 {
-		return "", errors.NewError(errors.ErrInvalidArgument, nil, "There is no corpus text loaded to generate the text from, you can load a corpus text using the `LoadNgrams` function")
+func (d *Decoy) buildNgramsLocked(words []string) {
+	d.ngrams = make(map[string][]string)
+	for left := 0; left+d.ngram < len(words); left++ {
+		key := strings.Join(words[left:left+d.ngram], " ")
+		d.ngrams[key] = append(d.ngrams[key], words[left+d.ngram])
 	}
-	if len(d.keys) == 0 {
-		return "", errors.New("There are no keys from the ngrams registered, are you sure you loaded the corpus text?")
+	d.rebuildKeysLocked()
+}
+
+func (d *Decoy) randomKey() string {
+	d.randMu.Lock()
+	defer d.randMu.Unlock()
+	d.ensureRandomLocked()
+
+	total := d.keyCumulative[len(d.keyCumulative)-1]
+	index, err := d.randomInt(0, total)
+	if err != nil {
+		return d.keys[0]
+	}
+	return d.keys[sort.SearchInts(d.keyCumulative, index+1)]
+}
+
+func (d *Decoy) RandomText(n int) (string, error) {
+	if n < 0 {
+		return "", fmt.Errorf("%w: RandomText: The requested text length (%d) can't be negative", errors.ErrInvalidArgument, n)
+	}
+	if d.maxTextLength > 0 && n > d.maxTextLength {
+		return "", fmt.Errorf("%w: RandomText: The requested text length (%d) exceeds the maximum allowed length of %d", errors.ErrInvalidArgument, n, d.maxTextLength)
+	}
+	if n == 0 {
+		return "", nil
 	}
 
-	words := strings.Fields(utils.Must(d.RandomChoice(d.keys...)))
-	text := strings.Builder{}
-	for range n {
-		key := strings.Join(words[len(words)-d.ngram:], " ")
-		successors, ok := d.ngrams[key]
-		if !ok {
-			break
+	d.corpusMu.RLock()
+	if (len(d.ngrams) == 0 || len(d.keys) == 0) && d.defaultNgrams {
+		d.corpusMu.RUnlock()
+		if err := d.LoadDefaultNgrams(); err != nil {
+			return "", err
 		}
-		words = append(words, utils.Must(d.RandomChoice(successors...)))
+		d.corpusMu.RLock()
+	}
+	defer d.corpusMu.RUnlock()
+
+	if len(d.ngrams) == 0 || len(d.keys) == 0 {
+		return "", fmt.Errorf("%w: There is no corpus text loaded to generate the text from, you can load a corpus text using the `LoadNgrams` function", ErrNoCorpus)
+	}
+
+	ngram := d.ngram
+	words := strings.Fields(d.randomKey())
+	if len(words) < ngram {
+		return "", fmt.Errorf("%w: The loaded ngrams are inconsistent with the configured ngram size", ErrNoCorpus)
+	}
+
+	text := strings.Builder{}
+	for generated := 0; generated < n; {
+		key := strings.Join(words[len(words)-ngram:], " ")
+		successors, ok := d.ngrams[key]
+		if !ok || len(successors) == 0 {
+			words = strings.Fields(d.randomKey())
+			continue
+		}
+		words = append(words, d.randomStringChoice(successors))
 		if text.Len() != 0 {
 			text.WriteString(" ")
 		}
 		text.WriteString(words[len(words)-1])
+		generated++
 	}
 
 	return text.String(), nil
 }
 
 func (d *Decoy) RandomName() string {
-	return utils.Must(d.RandomChoice(firstNames...))
+	return d.randomStringChoice(firstNames)
 }
 
 func (d *Decoy) RandomLastName() string {
-	return utils.Must(d.RandomChoice(lastNames...))
+	return d.randomStringChoice(lastNames)
 }
 
 func (d *Decoy) RandomFullName(secondLastNameProbability float64) string {
